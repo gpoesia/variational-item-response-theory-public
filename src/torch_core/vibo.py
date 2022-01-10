@@ -4,6 +4,7 @@ import math
 import numpy as np
 from tqdm import tqdm
 import sys
+import csv
 
 import torch
 from torch import optim
@@ -557,6 +558,31 @@ if __name__ == "__main__":
                 checkpoint['missing_imputation_accuracy'] = missing_imputation_accuracy
                 model_name = "Amortized VIBO" if args.embed_bert or args.embed_conpole else "VIBO"
                 print(f'{{ "seed": {args.seed}, "model": "{model_name}", "missing_perc": {args.artificial_missing_perc}, "accuracy": {missing_imputation_accuracy} }},')
+
+                if args.predict:
+                    with open(args.predict) as input_items:
+                        rows = list(input_items.readlines())
+                        rows = [r.strip() for r in rows]
+
+                    with torch.no_grad():
+                        mu, logvar = model.item_encoder.predict_new_items(rows)
+                    mu = mu.cpu().numpy()
+                    var = np.exp(logvar.cpu().numpy())
+
+                    with open(args.predict + '.out', 'w') as out:
+                        writer = csv.DictWriter(
+                                out,
+                                ['item']
+                                + [f'mu_{i}' for i in range(mu.shape[1])]
+                                + [f'var_{i}' for i in range(var.shape[1])])
+
+                        writer.writeheader()
+                        for j, item in enumerate(rows):
+                            d = {'item': item}
+                            for i in range(mu.shape[1]):
+                                d[f'mu_{i}'] = mu[j, i]
+                                d[f'var_{i}'] = var[j, i]
+                            writer.writerow(d)
                 sys.exit(0)
                 print(f'Missing Imputation Accuracy from samples: {missing_imputation_accuracy}')
 

@@ -773,6 +773,13 @@ class BertEncoder(nn.Module):
 
         return mu, logvar
 
+    def predict_new_items(self, items):
+        item_embedding = self.bert.embed_batch(items).detach()
+
+        mu = self.mu(item_embedding)
+        logvar = self.logvar(item_embedding)
+
+        return mu, logvar
 
 def irt_model_1pl(ability, item_feat, return_logit = False):
     difficulty = item_feat
