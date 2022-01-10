@@ -5,6 +5,7 @@ import numpy as np
 from tqdm import tqdm
 import sys
 import csv
+import json
 
 import torch
 from torch import optim
@@ -84,6 +85,8 @@ if __name__ == "__main__":
 
     parser.add_argument('--out-dir', type=str, default=OUT_DIR,
                         help='where to save chkpts (default: OUT_DIR)')
+    parser.add_argument('--out-results', type=str, default=None,
+                        help='where to save results as JSON (default: print to stdout)')
     parser.add_argument('--lr', type=float, default=5e-3,
                         help='default learning rate: 5e-3')
     parser.add_argument('--batch-size', type=int, default=16, metavar='N',
@@ -557,7 +560,52 @@ if __name__ == "__main__":
                 missing_imputation_accuracy = correct / float(count)
                 checkpoint['missing_imputation_accuracy'] = missing_imputation_accuracy
                 model_name = "Amortized VIBO" if args.embed_bert or args.embed_conpole else "VIBO"
-                print(f'{{ "seed": {args.seed}, "model": "{model_name}", "missing_perc": {args.artificial_missing_perc}, "accuracy": {missing_imputation_accuracy} }},')
+
+                results = {
+                    "seed": args.seed,
+                    "model": model_name,
+                    "missing_perc": args.artificial_missing_perc,
+                    "accuracy": missing_imputation_accuracy,
+                }
+
+                # Compute empirical difficulty of each item.
+                empirical_difficulty = {}
+                for i, item in enumerate(train_dataset.problems):
+                    responses = train_dataset.unmasked_responses[:, i]
+                    # Filter missing responses.
+                    responses = responses[responses != -1]
+                    empirical_difficulty[item] = np.mean(responses)
+
+                results["empirical_difficulty"] = empirical_difficulty
+
+                # Compute IRT parameters for all items in the dataset.
+                with torch.no_grad():
+                    mu, logvar = model.item_encoder.predict_new_items(train_dataset.problems)
+                    mu = mu.cpu().numpy()
+                    var = np.exp(logvar.cpu().numpy())
+
+                    irt_params = {}
+
+                    for i, item in enumerate(train_dataset.problems):
+                        irt_params[item] = {'mu': mu, 'var': var}
+
+                    results[irt_params] = irt_params
+
+                # Compute frequencies of items in train/test set.
+                observations = {}
+                for i, item in enumerate(train_dataset.problems):
+                    responses = train_dataset.unmasked_responses[:, i]
+                    item_mask = train_dataset.mask[:, i]
+                    train_obs = (responses[item_mask] != -1).sum()
+                    test_obs = (responses[1 - item_mask] != -1).sum()
+                    observations[item] = {'train': train_obs, 'test': test_obs}
+                results[observations] = observations
+
+                if args.out_results is None:
+                    print(json.dumps(results))
+                else:
+                    with open(args.out_results) as f:
+                        json.dump(results, f)
 
                 if args.predict:
                     with open(args.predict) as input_items:
@@ -583,11 +631,11 @@ if __name__ == "__main__":
                                 d[f'mu_{i}'] = mu[j, i]
                                 d[f'var_{i}'] = var[j, i]
                             writer.writerow(d)
+
                 sys.exit(0)
-                print(f'Missing Imputation Accuracy from samples: {missing_imputation_accuracy}')
 
             posterior_mean_samples = sample_posterior_mean(train_loader)
-            
+
             if args.artificial_missing_perc > 0:
                 missing_indices = train_dataset.missing_indices
                 missing_labels = train_dataset.missing_labels

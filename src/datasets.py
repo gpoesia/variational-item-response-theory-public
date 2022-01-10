@@ -974,6 +974,7 @@ class JSONDataset(torch.utils.data.Dataset):
         with open(os.path.join(DATA_DIR, 'dataset.json')) as f:
             observations = json.load(f)
 
+
         all_problems = list(set([row['problem'] for row in observations]))
         problem_id = dict(zip(all_problems, range(len(all_problems))))
 
@@ -1012,6 +1013,7 @@ class JSONDataset(torch.utils.data.Dataset):
         split = slice(0, num_train) if is_train else slice(num_train, -1)
 
         self.response = np.expand_dims(self.response[split], axis=2).astype(np.float32)
+        self.unmasked_responses = np.copy(self.response)
         self.mask = np.expand_dims(self.response_mask[split], axis=2).astype(np.int)
         self.problem_id = self.problem_id[split]
         self.num_person = len(self.response)
@@ -1074,6 +1076,8 @@ class ROARDataset(torch.utils.data.Dataset):
         split = slice(0, num_train) if is_train else slice(num_train, -1)
 
         self.response = np.expand_dims(self.response[split], axis=2).astype(np.float32)
+        self.unmasked_responses = np.copy(self.response)
+
         self.mask = np.expand_dims(self.response_mask[split], axis=2).astype(np.int)
         self.problem_id = self.problem_id[split]
         self.num_person = len(self.response)
